@@ -211,23 +211,318 @@ dispatcher.forward(request, response);</code></pre>
           </div>
         </section>
 
-        <section id="bypasses" class="doc-section pending-section" data-section>
-          <div class="section-kicker">04 · CONTEÚDO PENDENTE</div><h2>Técnicas Avançadas de Traversal e Bypasses de Filtros</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+        <section id="bypasses" class="doc-section" data-section>
+          <div class="section-kicker">04 · CANONICALIZAÇÃO</div>
+          <h2>Técnicas de Traversal e Bypasses de Filtros</h2>
+          <p class="lead">Filtros frágeis procuram uma sequência específica, enquanto o sistema de arquivos trabalha com o caminho já decodificado e normalizado. A diferença entre essas duas representações cria oportunidades de bypass.</p>
+
+          <h3>O problema da ordem de processamento</h3>
+          <div class="attack-chain" aria-label="Fluxo de processamento de um caminho">
+            <div><span>01</span><strong>Entrada HTTP</strong><small>Texto controlado pelo cliente</small></div>
+            <i aria-hidden="true">›</i>
+            <div><span>02</span><strong>Decodificação</strong><small>URL encoding e framework</small></div>
+            <i aria-hidden="true">›</i>
+            <div><span>03</span><strong>Normalização</strong><small>Separadores e segmentos</small></div>
+            <i aria-hidden="true">›</i>
+            <div><span>04</span><strong>Acesso</strong><small>Arquivo finalmente resolvido</small></div>
+          </div>
+          <p>Uma validação feita antes da última transformação pode analisar um valor diferente daquele que chegará à função de arquivo. Por isso, bloquear apenas a cadeia <code>../</code> não estabelece uma fronteira de segurança.</p>
+
+          <h3>Variações relevantes em laboratório</h3>
+          <div class="table-wrap" tabindex="0">
+            <table>
+              <thead><tr><th>Categoria</th><th>Exemplo didático</th><th>Por que filtros simples falham</th></tr></thead>
+              <tbody>
+                <tr><th>URL encoding</th><td><code>%2e%2e%2f</code></td><td>O filtro pode executar antes da decodificação feita pelo framework.</td></tr>
+                <tr><th>Codificação dupla</th><td><code>%252e%252e%252f</code></td><td>Camadas diferentes podem decodificar a entrada mais de uma vez.</td></tr>
+                <tr><th>Separador alternativo</th><td><code>..\</code></td><td>Em Windows, a barra invertida também separa diretórios.</td></tr>
+                <tr><th>Caminho absoluto</th><td><code>/etc/passwd</code> ou <code>C:\Windows\win.ini</code></td><td>Não depende de segmentos de subida para sair da pasta prevista.</td></tr>
+                <tr><th>Prefixos redundantes</th><td><code>....//</code></td><td>Uma única substituição textual pode produzir novamente <code>../</code>.</td></tr>
+                <tr><th>Esquemas</th><td><code>php://filter/...</code></td><td>Não é um caminho tradicional e pode ser interpretado pelo runtime.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="notice notice-warning" role="note"><div class="notice-icon" aria-hidden="true">!</div><div><strong>Null byte é contexto histórico</strong><p>O sufixo <code>%00</code> contornava extensões forçadas em versões antigas do PHP e de bibliotecas C. Runtimes modernos normalmente rejeitam esse byte, mas sistemas legados ainda devem ser avaliados.</p></div></div>
+
+          <h3>Como testar sem extrapolar o escopo</h3>
+          <ul class="feature-list">
+            <li><span>01</span><div><strong>Defina uma linha de base</strong><p>Compare tamanho, código HTTP, título e tempo de resposta de uma página válida com uma página inexistente.</p></div></li>
+            <li><span>02</span><div><strong>Use arquivos-cobaia</strong><p>Crie no laboratório um arquivo sem dados reais, como <code>/opt/lab/marcador.txt</code>, e limite o objetivo à leitura desse marcador.</p></div></li>
+            <li><span>03</span><div><strong>Varie uma dimensão por vez</strong><p>Teste codificação, profundidade e separadores separadamente para saber qual transformação causou o resultado.</p></div></li>
+            <li><span>04</span><div><strong>Registre e interrompa</strong><p>Ao demonstrar a falha, preserve a requisição mínima, pare a enumeração e avance para a remediação.</p></div></li>
+          </ul>
         </section>
-        <section id="wrappers" class="doc-section pending-section" data-section>
-          <div class="section-kicker">05 · CONTEÚDO PENDENTE</div><h2>Exploração com PHP Wrappers e Pseudo-Protocolos</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+
+        <section id="wrappers" class="doc-section" data-section>
+          <div class="section-kicker">05 · PHP STREAMS</div>
+          <h2>PHP Wrappers e Pseudo-Protocolos</h2>
+          <p class="lead">Wrappers são interfaces nativas que permitem ao PHP tratar diferentes fontes de dados como fluxos. Quando uma entrada não confiável alcança <code>include()</code>, <code>require()</code> ou funções de leitura, esses esquemas podem ampliar o impacto da falha.</p>
+
+          <h3><code>php://filter</code>: leitura transformada</h3>
+          <p>O wrapper <code>php://filter</code> aplica filtros a um recurso antes de entregá-lo à aplicação. Em laboratório, a transformação Base64 demonstra a leitura do código-fonte de um arquivo PHP sem que ele seja interpretado.</p>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> HTTP · LABORATÓRIO LOCAL</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-http">GET /index.php?page=php://filter/convert.base64-encode/resource=index.php HTTP/1.1
+Host: 127.0.0.1
+Connection: close</code></pre>
+          </div>
+          <div class="notice notice-blue" role="note"><div class="notice-icon" aria-hidden="true">i</div><div><strong>Interpretação do resultado</strong><p>Uma resposta com texto Base64 que decodifica para o código da aplicação comprova exposição de fonte. Não é necessário procurar credenciais ou arquivos adicionais.</p></div></div>
+
+          <h3>Principais wrappers e condições</h3>
+          <div class="table-wrap" tabindex="0">
+            <table>
+              <thead><tr><th>Wrapper</th><th>Uso legítimo</th><th>Risco quando a entrada é controlada</th><th>Controle principal</th></tr></thead>
+              <tbody>
+                <tr><th><code>php://filter</code></th><td>Transformar dados em fluxo.</td><td>Exposição de código-fonte e arquivos legíveis.</td><td>Não permitir que o usuário componha o recurso.</td></tr>
+                <tr><th><code>php://input</code></th><td>Ler o corpo bruto da requisição.</td><td>Inclusão de conteúdo enviado no corpo em configurações vulneráveis.</td><td>Allowlist de rotas e runtime atualizado.</td></tr>
+                <tr><th><code>data://</code></th><td>Representar dados inline.</td><td>Conteúdo interpretável quando opções perigosas estão habilitadas.</td><td>Manter <code>allow_url_include=Off</code>.</td></tr>
+                <tr><th><code>zip://</code> / <code>phar://</code></th><td>Acessar recursos empacotados.</td><td>Processamento inesperado de arquivos controlados.</td><td>Separar uploads, validar formato e evitar inclusão dinâmica.</td></tr>
+                <tr><th><code>file://</code></th><td>Acessar arquivos locais por URI.</td><td>Leitura absoluta fora da pasta esperada.</td><td>Mapear identificadores para caminhos internos fixos.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Configuração defensiva do PHP</h3>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> INI · ENDURECIMENTO</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-ini">allow_url_fopen = Off
+allow_url_include = Off
+display_errors = Off
+log_errors = On
+open_basedir = /var/www/app:/var/lib/php/sessions:/tmp</code></pre>
+          </div>
+          <div class="notice notice-green" role="note"><div class="notice-icon" aria-hidden="true">✓</div><div><strong>Configuração não substitui código seguro</strong><p><code>open_basedir</code> e diretivas de URL reduzem impacto, mas a defesa principal continua sendo impedir que dados do usuário sejam usados como nomes de arquivos ou recursos.</p></div></div>
         </section>
-        <section id="rce" class="doc-section pending-section" data-section>
-          <div class="section-kicker">06 · CONTEÚDO PENDENTE</div><h2>Escalada de Impacto: de LFI para RCE</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+
+        <section id="rce" class="doc-section" data-section>
+          <div class="section-kicker">06 · CADEIA DE IMPACTO</div>
+          <h2>Escalada de LFI para Execução de Código</h2>
+          <p class="lead">LFI não implica automaticamente execução remota de código. A escalada ocorre apenas quando o atacante consegue fazer conteúdo interpretável existir em um arquivo local que a aplicação vulnerável posteriormente inclui.</p>
+
+          <h3>Pré-condições da cadeia</h3>
+          <div class="attack-chain" aria-label="Cadeia conceitual de LFI para RCE">
+            <div><span>01</span><strong>Gravação</strong><small>Conteúdo controlado chega a um arquivo</small></div>
+            <i aria-hidden="true">›</i>
+            <div><span>02</span><strong>Localização</strong><small>O caminho desse arquivo é conhecido</small></div>
+            <i aria-hidden="true">›</i>
+            <div><span>03</span><strong>Leitura</strong><small>O processo web possui permissão</small></div>
+            <i aria-hidden="true">›</i>
+            <div><span>04</span><strong>Inclusão</strong><small>O runtime interpreta o conteúdo</small></div>
+          </div>
+
+          <h3>Fontes de conteúdo controlável</h3>
+          <div class="comparison-grid">
+            <div class="comparison-card"><span>LOGS</span><h4>Log poisoning</h4><p>Cabeçalhos ou caminhos registrados pelo servidor podem chegar ao arquivo de log. A escalada exige que esse log seja legível e incluído pelo PHP.</p></div>
+            <div class="comparison-card"><span>SESSÕES</span><h4>Arquivos de sessão</h4><p>Dados persistidos em sessões podem ser controláveis. O formato, o nome e o diretório variam conforme a configuração.</p></div>
+            <div class="comparison-card"><span>UPLOADS</span><h4>Arquivos enviados</h4><p>Um upload aceito como imagem ou documento pode conter conteúdo inesperado. A exploração depende de conhecer o caminho e incluí-lo.</p></div>
+            <div class="comparison-card danger"><span>PROCESSO</span><h4>Ambiente e temporários</h4><p>Variáveis, descritores e arquivos temporários podem expor conteúdo, mas permissões e ciclo de vida limitam a cadeia.</p></div>
+          </div>
+
+          <h3>Prova de conceito segura</h3>
+          <p>Em uma VM descartável, use somente um marcador inofensivo para demonstrar interpretação. O objetivo é observar <code>LAB_OK</code>, não executar comandos do sistema.</p>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> PHP · MARCADOR INOFENSIVO</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-php">&lt;?php
+// Arquivo criado exclusivamente dentro do laboratório.
+echo 'LAB_OK';
+?&gt;</code></pre>
+          </div>
+          <div class="notice notice-red" role="note"><div class="notice-icon" aria-hidden="true">!</div><div><strong>Pare na confirmação</strong><p>Se o marcador for interpretado, a cadeia está comprovada. Não use webshells, reverse shells, persistência ou comandos de pós-exploração em uma atividade didática.</p></div></div>
+
+          <h3>Como quebrar a cadeia</h3>
+          <ul class="feature-list">
+            <li><span>A</span><div><strong>Remova a inclusão controlável</strong><p>Troque caminhos fornecidos pelo usuário por chaves de uma allowlist interna.</p></div></li>
+            <li><span>B</span><div><strong>Isole conteúdo gravável</strong><p>Logs, sessões e uploads não devem ficar dentro de diretórios interpretáveis pelo servidor web.</p></div></li>
+            <li><span>C</span><div><strong>Reduza permissões</strong><p>O usuário do serviço deve ler apenas os arquivos estritamente necessários à aplicação.</p></div></li>
+            <li><span>D</span><div><strong>Desative interpretação em uploads</strong><p>Sirva arquivos enviados por um domínio estático, armazenamento de objetos ou diretório sem execução.</p></div></li>
+          </ul>
         </section>
-        <section id="automacao" class="doc-section pending-section" data-section>
-          <div class="section-kicker">07 · CONTEÚDO PENDENTE</div><h2>Automação, Fuzzing e Reconhecimento</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+
+        <section id="automacao" class="doc-section" data-section>
+          <div class="section-kicker">07 · TESTES CONTROLADOS</div>
+          <h2>Automação, Fuzzing e Reconhecimento</h2>
+          <p class="lead">Automação ajuda a encontrar variações, mas também multiplica tráfego e impacto. Em aula, restrinja o alvo a <code>127.0.0.1</code> ou a uma VM isolada, use uma lista curta e pare assim que a hipótese for confirmada.</p>
+
+          <h3>Fluxo de trabalho reproduzível</h3>
+          <ol class="step-list">
+            <li><span>1</span><div><strong>Documente o escopo</strong><p>Registre host, porta, endpoint, janela de teste e arquivos-cobaia autorizados.</p></div></li>
+            <li><span>2</span><div><strong>Capture respostas-base</strong><p>Faça uma requisição válida e outra inválida para identificar tamanho, status e texto característicos.</p></div></li>
+            <li><span>3</span><div><strong>Construa uma wordlist mínima</strong><p>Inclua somente o marcador do laboratório, profundidades necessárias e representações que respondam à hipótese.</p></div></li>
+            <li><span>4</span><div><strong>Limite taxa e concorrência</strong><p>Evite indisponibilidade acidental e facilite a correlação com os logs do servidor.</p></div></li>
+            <li><span>5</span><div><strong>Valide manualmente</strong><p>Um resultado diferente é apenas um indício; reproduza a requisição isoladamente antes de concluir.</p></div></li>
+          </ol>
+
+          <h3>Linha de base com cURL</h3>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> BASH · SOMENTE LAB LOCAL</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-bash"># Página válida
+curl -i 'http://127.0.0.1:8080/index.php?page=pages/home.php'
+
+# Entrada inválida para comparação
+curl -i 'http://127.0.0.1:8080/index.php?page=nao-existe.php'</code></pre>
+          </div>
+
+          <h3>Fuzzing com lista curta</h3>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> TEXT · lfi-lab.txt</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-text">pages/home.php
+../marcador.txt
+../../marcador.txt
+%2e%2e%2fmarcador.txt
+php://filter/convert.base64-encode/resource=index.php</code></pre>
+          </div>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> BASH · FFUF</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-bash">ffuf \
+  -u 'http://127.0.0.1:8080/index.php?page=FUZZ' \
+  -w lfi-lab.txt \
+  -rate 5 \
+  -t 1 \
+  -mc all</code></pre>
+          </div>
+          <div class="notice notice-warning" role="note"><div class="notice-icon" aria-hidden="true">!</div><div><strong>Não confie apenas em status HTTP</strong><p>Aplicações vulneráveis frequentemente retornam <code>200 OK</code> até em erros. Compare corpo, tamanho, hashes, mensagens e comportamento com as respostas-base.</p></div></div>
+
+          <h3>Evidências mínimas para o relatório</h3>
+          <div class="table-wrap" tabindex="0">
+            <table>
+              <thead><tr><th>Campo</th><th>O que registrar</th></tr></thead>
+              <tbody>
+                <tr><th>Localização</th><td>Endpoint, parâmetro e método HTTP afetados.</td></tr>
+                <tr><th>Reprodução</th><td>Uma requisição mínima e uma resposta com o marcador do laboratório.</td></tr>
+                <tr><th>Impacto</th><td>Tipo de dado acessível e permissões observadas, sem coletar dados reais desnecessários.</td></tr>
+                <tr><th>Causa raiz</th><td>Fluxo da entrada até a função de arquivo vulnerável.</td></tr>
+                <tr><th>Correção</th><td>Patch proposto, teste negativo e evidência de que a rota legítima continua funcionando.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </section>
-        <section id="estudo" class="doc-section pending-section" data-section>
-          <div class="section-kicker">08 · CONTEÚDO PENDENTE</div><h2>Estudo de Caso Prático</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+
+        <section id="estudo" class="doc-section" data-section>
+          <div class="section-kicker">08 · FATECSEG CORP</div>
+          <h2>Estudo de Caso Prático</h2>
+          <p class="lead">O portal fictício FatecSeg Corp usa um parâmetro para escolher o conteúdo da página. O exercício conduz da identificação à correção, sempre em uma VM isolada e com um arquivo-cobaia criado pelo professor.</p>
+
+          <div class="notice notice-blue" role="note"><div class="notice-icon" aria-hidden="true">i</div><div><strong>Objetivo da prática</strong><p>Demonstrar que o parâmetro <code>page</code> alcança uma operação de inclusão, ler apenas o marcador autorizado e substituir a implementação por um mapa fechado de rotas.</p></div></div>
+
+          <h3>1. Reconhecer o fluxo normal</h3>
+          <p>Abra as páginas pelo menu e observe valores como <code>pages/home.php</code> e <code>pages/company.php</code>. A aplicação revela que o nome do arquivo é transportado na URL.</p>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> HTTP · NAVEGAÇÃO LEGÍTIMA</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-http">GET /fatecseg/index.php?page=pages/company.php HTTP/1.1
+Host: 127.0.0.1</code></pre>
+          </div>
+
+          <h3>2. Localizar a causa raiz</h3>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> PHP · IMPLEMENTAÇÃO VULNERÁVEL</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-php">&lt;?php
+$page = isset($_GET['page']) ? $_GET['page'] : 'pages/home.php';
+include($page);
+?&gt;</code></pre>
+          </div>
+          <p>O valor externo chega a <code>include()</code> sem passar por uma decisão interna. A aplicação delega ao visitante a escolha do recurso que o runtime tentará abrir.</p>
+
+          <h3>3. Confirmar com o marcador autorizado</h3>
+          <p>O professor prepara <code>/opt/fatecseg/contrato-interno.txt</code> com conteúdo fictício. Os alunos ajustam apenas a profundidade do caminho até obter o marcador, registram a evidência e interrompem a exploração.</p>
+          <div class="notice notice-warning" role="note"><div class="notice-icon" aria-hidden="true">!</div><div><strong>Limite do exercício</strong><p>Não acesse <code>/etc/shadow</code>, chaves SSH, históricos, variáveis com segredos ou dados de outros usuários. O marcador já é evidência suficiente.</p></div></div>
+
+          <h3>4. Aplicar a correção</h3>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> PHP · MAPA FECHADO DE ROTAS</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-php">&lt;?php
+$routes = array(
+    'home'     =&gt; __DIR__ . '/pages/home.php',
+    'company'  =&gt; __DIR__ . '/pages/company.php',
+    'services' =&gt; __DIR__ . '/pages/services.php',
+    'news'     =&gt; __DIR__ . '/pages/news.php',
+    'contact'  =&gt; __DIR__ . '/pages/contact.php'
+);
+
+$route = isset($_GET['page']) ? $_GET['page'] : 'home';
+
+if (!isset($routes[$route])) {
+    http_response_code(404);
+    exit('Página não encontrada');
+}
+
+include $routes[$route];
+?&gt;</code></pre>
+          </div>
+
+          <h3>5. Executar testes de regressão</h3>
+          <div class="table-wrap" tabindex="0">
+            <table>
+              <thead><tr><th>Caso</th><th>Entrada</th><th>Resultado esperado</th></tr></thead>
+              <tbody>
+                <tr><th>Rota válida</th><td><code>page=company</code></td><td>Página da empresa com HTTP 200.</td></tr>
+                <tr><th>Rota inexistente</th><td><code>page=nao-existe</code></td><td>HTTP 404 sem detalhes internos.</td></tr>
+                <tr><th>Traversal</th><td><code>page=../../marcador.txt</code></td><td>HTTP 404; nenhum conteúdo do arquivo.</td></tr>
+                <tr><th>Wrapper</th><td><code>page=php://filter/...</code></td><td>HTTP 404; esquema não é avaliado.</td></tr>
+                <tr><th>Separador Windows</th><td><code>page=..\marcador.txt</code></td><td>HTTP 404; entrada ausente do mapa.</td></tr>
+              </tbody>
+            </table>
+          </div>
         </section>
-        <section id="defesa" class="doc-section pending-section" data-section>
-          <div class="section-kicker">09 · CONTEÚDO PENDENTE</div><h2>Defesa em Profundidade e Código Seguro</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+
+        <section id="defesa" class="doc-section" data-section>
+          <div class="section-kicker">09 · REMEDIAÇÃO</div>
+          <h2>Defesa em Profundidade e Código Seguro</h2>
+          <p class="lead">A correção mais forte elimina a relação direta entre a entrada do usuário e o sistema de arquivos. Controles adicionais reduzem o impacto caso outra falha apareça, mas não substituem essa mudança de arquitetura.</p>
+
+          <h3>Prioridade 1: identificadores, não caminhos</h3>
+          <p>O cliente envia uma chave curta, como <code>company</code>. Somente o servidor conhece o caminho correspondente. Isso impede traversal, caminhos absolutos e wrappers por construção.</p>
+          <div class="comparison-grid">
+            <div class="comparison-card danger"><span>EVITE</span><h4>Caminho vindo da URL</h4><p><code>?page=pages/company.php</code> expõe estrutura interna e permite que a entrada influencie a resolução.</p></div>
+            <div class="comparison-card"><span>PREFIRA</span><h4>Identificador de negócio</h4><p><code>?page=company</code> é convertido por um mapa imutável mantido no código da aplicação.</p></div>
+          </div>
+
+          <h3>Quando o caminho dinâmico for inevitável</h3>
+          <p>Normalize o destino, resolva o caminho real e verifique a contenção dentro de uma pasta base. A existência e o tipo do arquivo também devem ser confirmados.</p>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> PHP · CONTENÇÃO COM REALPATH</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-php">&lt;?php
+$base = realpath(__DIR__ . '/documents');
+$name = isset($_GET['file']) ? $_GET['file'] : '';
+$candidate = realpath($base . DIRECTORY_SEPARATOR . $name);
+
+$insideBase = $candidate !== false
+    &amp;&amp; strpos($candidate, $base . DIRECTORY_SEPARATOR) === 0
+    &amp;&amp; is_file($candidate);
+
+if (!$insideBase) {
+    http_response_code(404);
+    exit('Arquivo não encontrado');
+}
+
+readfile($candidate);
+?&gt;</code></pre>
+          </div>
+          <div class="notice notice-warning" role="note"><div class="notice-icon" aria-hidden="true">!</div><div><strong>Atenção a links simbólicos e prefixos</strong><p>Compare caminhos canônicos com o separador ao final da base. Uma comparação ingênua com <code>strpos($candidate, $base) === 0</code> também aceitaria uma pasta vizinha chamada, por exemplo, <code>documents-backup</code>.</p></div></div>
+
+          <h3>Camadas complementares</h3>
+          <ul class="feature-list">
+            <li><span>01</span><div><strong>Menor privilégio</strong><p>Execute o serviço com usuário dedicado, sem shell interativo e sem acesso a chaves, backups ou diretórios administrativos.</p></div></li>
+            <li><span>02</span><div><strong>Separação de uploads</strong><p>Armazene arquivos enviados fora do DocumentRoot, gere nomes internos e sirva-os como conteúdo estático sem interpretação.</p></div></li>
+            <li><span>03</span><div><strong>Erros discretos</strong><p>Não exponha caminhos absolutos, stack traces ou avisos de inclusão ao cliente. Envie detalhes apenas para logs protegidos.</p></div></li>
+            <li><span>04</span><div><strong>Runtime endurecido</strong><p>Mantenha dependências atualizadas, desative inclusão remota e restrinja o acesso do PHP quando compatível com a aplicação.</p></div></li>
+            <li><span>05</span><div><strong>Monitoramento</strong><p>Detecte sequências de traversal, esquemas inesperados e picos de erros, correlacionando-os por origem e endpoint.</p></div></li>
+            <li><span>06</span><div><strong>Testes contínuos</strong><p>Inclua casos negativos para traversal, encoding, caminhos absolutos, separadores alternativos e wrappers na suíte de segurança.</p></div></li>
+          </ul>
+
+          <h3>Checklist de revisão</h3>
+          <div class="checklist-grid">
+            <label><input type="checkbox"><span>Nenhum parâmetro externo chega diretamente a <code>include</code> ou <code>require</code>.</span></label>
+            <label><input type="checkbox"><span>Rotas usam allowlist de identificadores internos.</span></label>
+            <label><input type="checkbox"><span>Uploads, sessões e logs ficam fora de diretórios interpretáveis.</span></label>
+            <label><input type="checkbox"><span>O processo web aplica o princípio do menor privilégio.</span></label>
+            <label><input type="checkbox"><span>Erros públicos não revelam caminhos do servidor.</span></label>
+            <label><input type="checkbox"><span>Testes negativos cobrem encoding, wrappers e separadores alternativos.</span></label>
+            <label><input type="checkbox"><span>Alertas distinguem navegação normal de tentativas repetidas de traversal.</span></label>
+            <label><input type="checkbox"><span>A correção foi validada sem quebrar as rotas legítimas.</span></label>
+          </div>
+
+          <div class="notice notice-green" role="note"><div class="notice-icon" aria-hidden="true">✓</div><div><strong>Princípio central</strong><p>A aplicação deve decidir quais recursos podem ser acessados. A entrada do usuário pode selecionar uma opção conhecida, mas nunca construir livremente o caminho que o servidor abrirá.</p></div></div>
         </section>
 
         <section id="simulador" class="doc-section simulator-section" data-section>

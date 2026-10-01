@@ -143,9 +143,25 @@ tr:last-child > * { border-bottom: 0; }
 .source-note { display: flex; align-items: flex-start; gap: 14px; margin-top: 32px; padding: 18px; border: 1px dashed var(--line); border-radius: 9px; }
 .source-note span { flex: none; padding: 3px 7px; border-radius: 4px; background: var(--bg-soft); color: var(--yellow); font: 800 .65rem/1.4 "SFMono-Regular", Consolas, monospace; text-transform: uppercase; }
 .source-note p { margin: 0; font-size: .88rem; }
-.pending-section { min-height: 250px; opacity: .78; }
-.pending-section h2 { max-width: 760px; }
-.pending-section p { padding: 18px; border: 1px dashed var(--line); border-radius: 8px; background: var(--panel); }
+
+.attack-chain { display: grid; grid-template-columns: repeat(7, auto); align-items: center; gap: 10px; margin: 26px 0; }
+.attack-chain > div { min-height: 112px; padding: 15px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel); }
+.attack-chain > div span { display: block; margin-bottom: 8px; color: var(--accent); font: 800 .68rem/1 "SFMono-Regular", Consolas, monospace; }
+.attack-chain > div strong, .attack-chain > div small { display: block; }
+.attack-chain > div strong { font-size: .88rem; }
+.attack-chain > div small { margin-top: 5px; color: var(--faint); font-size: .72rem; line-height: 1.4; }
+.attack-chain > i { color: var(--faint); font-size: 1.4rem; font-style: normal; }
+
+.step-list { margin: 26px 0; padding: 0; list-style: none; counter-reset: step; }
+.step-list li { display: grid; grid-template-columns: 42px 1fr; gap: 16px; padding: 17px 0; border-bottom: 1px solid var(--line); }
+.step-list li:first-child { border-top: 1px solid var(--line); }
+.step-list li > span { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 50%; color: var(--accent); font: 800 .75rem/1 "SFMono-Regular", Consolas, monospace; }
+.step-list p { margin: 2px 0 0; font-size: .9rem; }
+
+.checklist-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 24px 0 30px; }
+.checklist-grid label { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; padding: 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--muted); font-size: .86rem; cursor: pointer; }
+.checklist-grid input { width: 17px; height: 17px; margin: 3px 0 0; accent-color: var(--accent-2); }
+.checklist-grid label:has(input:checked) { border-color: color-mix(in srgb, var(--accent-2) 45%, var(--line)); color: var(--text); background: color-mix(in srgb, var(--accent-2) 7%, var(--panel)); }
 
 .simulator-section { padding-bottom: 20px; }
 .simulator-card { margin: 28px 0; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); }
@@ -198,6 +214,9 @@ tr:last-child > * { border-bottom: 0; }
   .hero { padding: 70px 0 44px; }
   .hero h1 { font-size: clamp(2.5rem, 13vw, 4rem); }
   .audience-grid, .comparison-grid { grid-template-columns: 1fr; }
+  .attack-chain { grid-template-columns: 1fr; }
+  .attack-chain > i { transform: rotate(90deg); justify-self: center; }
+  .checklist-grid { grid-template-columns: 1fr; }
   .doc-section { padding-top: 62px; }
   .doc-section h2 { font-size: 2.05rem; }
   .filter-grid { grid-template-columns: 1fr 1fr; }
