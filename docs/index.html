@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Guia educacional sobre Local File Inclusion (LFI), seus riscos, identificação e mitigação.">
+  <meta name="color-scheme" content="dark light">
+  <title>Local File Inclusion (LFI) — Guia Educacional</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23070b14'/%3E%3Cpath d='M18 18h28v8H26v12h20v8H18z' fill='%2338bdf8'/%3E%3Cpath d='M38 30h8v16h-8z' fill='%2322c55e'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    (() => {
+      const saved = localStorage.getItem('lfi-theme');
+      const preferred = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      document.documentElement.dataset.theme = saved || preferred;
+    })();
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+  <div class="reading-progress" aria-hidden="true"><span id="reading-progress"></span></div>
+
+  <header class="site-header">
+    <div class="header-inner">
+      <a class="brand" href="#topo" aria-label="LFI Guide — início">
+        <span class="brand-mark" aria-hidden="true">L/</span>
+        <span><strong>LFI Guide</strong><small>SECURITY NOTES</small></span>
+      </a>
+      <div class="header-actions">
+        <span class="scope-pill"><span aria-hidden="true"></span> Laboratório autorizado</span>
+        <button class="icon-button" id="theme-toggle" type="button" aria-label="Alternar tema" aria-pressed="false">
+          <span class="theme-icon" aria-hidden="true">☾</span>
+        </button>
+        <button class="icon-button mobile-only" id="toc-toggle" type="button" aria-label="Abrir sumário" aria-expanded="false">☰</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="page-shell" id="topo">
+    <aside class="toc" id="toc" aria-label="Sumário do artigo">
+      <div class="toc-heading">
+        <span>Neste guia</span>
+        <button id="toc-close" class="toc-close mobile-only" type="button" aria-label="Fechar sumário">×</button>
+      </div>
+      <nav>
+        <a href="#introducao"><span>01</span> Introdução e contexto</a>
+        <a href="#anatomia"><span>02</span> Anatomia vulnerável</a>
+        <a href="#arquivos"><span>03</span> Arquivos sensíveis</a>
+        <a href="#bypasses"><span>04</span> Traversal e bypasses</a>
+        <a href="#wrappers"><span>05</span> PHP wrappers</a>
+        <a href="#rce"><span>06</span> LFI para RCE</a>
+        <a href="#automacao"><span>07</span> Automação e fuzzing</a>
+        <a href="#estudo"><span>08</span> Estudo de caso</a>
+        <a href="#defesa"><span>09</span> Defesa em profundidade</a>
+        <a href="#simulador"><span>LAB</span> Simulador de filtros</a>
+      </nav>
+      <div class="toc-footer">
+        <strong>Uso responsável</strong>
+        <p>Pratique apenas em sistemas próprios ou com autorização expressa.</p>
+      </div>
+    </aside>
+
+    <main id="conteudo">
+      <section class="hero" aria-labelledby="page-title">
+        <div class="hero-grid" aria-hidden="true"></div>
+        <div class="badges">
+          <span>Guia Educacional</span>
+          <span>Cybersecurity</span>
+          <span>OWASP Top 10</span>
+        </div>
+        <p class="eyebrow">WEB APPLICATION SECURITY · DOCUMENTAÇÃO TÉCNICA</p>
+        <h1 id="page-title">Entendendo e Dominando<br><span>Local File Inclusion</span></h1>
+        <p class="hero-lead">Um guia técnico sobre a anatomia do LFI, seus impactos e as estratégias de defesa que reduzem a superfície de ataque.</p>
+        <div class="audience-grid">
+          <div><small>PÚBLICO-ALVO</small><strong>Computação, Segurança, Engenharia, Pentest e Desenvolvimento Web</strong></div>
+          <div><small>FOCO</small><strong>Teoria, código vulnerável, exploração autorizada e remediação</strong></div>
+        </div>
+      </section>
+
+      <div class="notice notice-warning" role="note">
+        <div class="notice-icon" aria-hidden="true">!</div>
+        <div><strong>Ambiente controlado</strong><p>Este conteúdo é destinado a ensino e testes autorizados. Não aplique as técnicas em sistemas de terceiros ou fora do escopo formalmente definido.</p></div>
+      </div>
+
+      <article class="article">
+        <section id="introducao" class="doc-section" data-section>
+          <div class="section-kicker">01 · FUNDAMENTOS</div>
+          <h2>Introdução Teórica e Contextualização</h2>
+          <p class="lead">A vulnerabilidade de <strong>Local File Inclusion (LFI)</strong> é uma falha de segurança de alta severidade que ocorre quando uma aplicação web permite que dados não sanitizados ou não validados, fornecidos pelo usuário, sejam passados diretamente a funções internas do servidor responsáveis por carregar, incluir ou ler arquivos no sistema de arquivos local.</p>
+
+          <h3>Enquadramento no OWASP Top 10</h3>
+          <p>No padrão internacional de riscos de segurança da OWASP (Open Web Application Security Project), o LFI classifica-se primariamente sob duas categorias estratégicas:</p>
+          <ul class="feature-list">
+            <li><span>A03</span><div><strong>A03:2021 — Injection</strong><p>Ocorre devido ao tratamento inadequado de entradas de dados não confiáveis que alteram a lógica de interpretação de comandos ou caminhos do servidor.</p></div></li>
+            <li><span>A05</span><div><strong>A05:2021 — Security Misconfiguration</strong><p>Muitas vezes intensificado por configurações inseguras no servidor web ou runtime da linguagem, como permissões excessivas do processo web ou diretivas ativas como <code>allow_url_include</code>.</p></div></li>
+          </ul>
+
+          <h3>Diferença fundamental: Path Traversal vs. LFI</h3>
+          <p>Embora os termos sejam frequentemente usados como sinônimos na prática de testes de penetração, existe uma distinção técnica crucial entre ambos:</p>
+          <div class="table-wrap" tabindex="0">
+            <table>
+              <thead><tr><th>Característica</th><th>Path Traversal / Directory Traversal</th><th>Local File Inclusion (LFI)</th></tr></thead>
+              <tbody>
+                <tr><th>Objetivo primário</th><td>Navegar na estrutura de diretórios para <strong>ler ou extrair bytes</strong> de um arquivo.</td><td>Solicitar que o motor do servidor <strong>carregue, interprete ou execute</strong> o arquivo.</td></tr>
+                <tr><th>Mecanismo interno</th><td>Funções de leitura estática, como <code>file_get_contents</code>, <code>readfile</code>, <code>fs.readFile</code> e <code>send_file</code>.</td><td>Funções do runtime que podem executar código, como <code>include</code> e <code>require</code> no PHP.</td></tr>
+                <tr><th>Resultado</th><td>Vazamento de dados ou leitura de arquivo texto.</td><td>Leitura de arquivo ou <strong>execução de código</strong> caso o arquivo contenha instruções interpretáveis.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3>LFI vs. RFI (Remote File Inclusion)</h3>
+          <div class="comparison-grid">
+            <div class="comparison-card"><span>LOCAL</span><h4>LFI</h4><p>O arquivo acessado deve existir no sistema de arquivos local do servidor, mesmo que seja temporário, log ou upload.</p></div>
+            <div class="comparison-card danger"><span>REMOTO</span><h4>RFI</h4><p>O servidor é induzido a buscar conteúdo externo via HTTP/FTP. No PHP, depende de configurações inseguras, como <code>allow_url_include</code>.</p></div>
+          </div>
+        </section>
+
+        <section id="anatomia" class="doc-section" data-section>
+          <div class="section-kicker">02 · CÓDIGO</div>
+          <h2>Anatomia do Código Vulnerável</h2>
+          <p class="lead">A raiz de toda vulnerabilidade LFI é a <strong>confiança cega da aplicação nas entradas do usuário</strong>. Veja como o padrão vulnerável aparece em diferentes ecossistemas web.</p>
+
+          <h3>A. PHP — a linguagem clássica</h3>
+          <p>Devido ao modelo de renderização dinâmica do PHP, funções nativas de inclusão são muito utilizadas para criar sistemas de templates ou carregar componentes modulares.</p>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> PHP · EXEMPLO DIDÁTICO</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-php">&lt;?php
+$page = isset($_GET['page']) ? $_GET['page'] : 'pages/home.php';
+
+// Vulnerável: entrada do usuário chega diretamente à inclusão.
+include($page);
+?&gt;</code></pre>
+          </div>
+          <div class="notice notice-red" role="note"><div class="notice-icon" aria-hidden="true">×</div><div><strong>Funções perigosas no PHP</strong><p>Inclusão/execução: <code>include()</code>, <code>require()</code>, <code>include_once()</code> e <code>require_once()</code>. Leitura: <code>file_get_contents()</code>, <code>readfile()</code>, <code>file()</code>, <code>fopen()</code> e <code>copy()</code>.</p></div></div>
+
+          <h3>B. Python — Flask e Django</h3>
+          <p>Embora Python não execute código arbitrário ao ler arquivos como o PHP faz, o uso incorreto de funções de manipulação de arquivo pode resultar em vazamento de código e credenciais via Path Traversal/LFI.</p>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> PYTHON · FLASK</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-python">from flask import Flask, request, send_file
+import os
+
+app = Flask(__name__)
+
+@app.route('/download')
+def download_file():
+    filename = request.args.get('file')
+    file_path = os.path.join('/var/www/static/', filename)
+    return send_file(file_path)</code></pre>
+          </div>
+          <div class="notice notice-blue" role="note"><div class="notice-icon" aria-hidden="true">i</div><div><strong>Cenário didático</strong><p>Em um laboratório autorizado, uma entrada como <code>?file=../../../../etc/passwd</code> demonstra como a resolução do caminho pode sair da pasta prevista.</p></div></div>
+
+          <h3>C. Node.js — Express</h3>
+          <p>No ecossistema Node.js, erros ao servir arquivos estáticos ou manipular o sistema de arquivos (<code>fs</code>) geram vulnerabilidades graves de leitura arbitrária.</p>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> JAVASCRIPT · EXPRESS</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-javascript">const express = require('express');
+const path = require('path');
+const fs = require('fs');
+const app = express();
+
+app.get('/view', (req, res) =&gt; {
+  const fileName = req.query.file;
+  const filePath = path.join(__dirname, 'public', fileName);
+
+  fs.readFile(filePath, 'utf8', (err, data) =&gt; {
+    if (err) return res.status(404).send('Arquivo não encontrado');
+    res.send(data);
+  });
+});</code></pre>
+          </div>
+
+          <h3>D. Java — Servlets e JSP</h3>
+          <p>Aplicações Java corporativas baseadas em Servlets ou JSP podem ser afetadas ao utilizar o <code>RequestDispatcher</code> com entrada não confiável.</p>
+          <div class="code-block">
+            <div class="code-head"><span><i></i> JAVA · SERVLET</span><button class="copy-button" type="button">Copiar código</button></div>
+            <pre><code class="language-java">String page = request.getParameter("page");
+
+RequestDispatcher dispatcher = request.getRequestDispatcher(
+    "/WEB-INF/views/" + page
+);
+dispatcher.forward(request, response);</code></pre>
+          </div>
+          <p class="caption">Se o parâmetro <code>page</code> aceitar segmentos de subida de diretório, o acesso pode escapar do local originalmente esperado.</p>
+        </section>
+
+        <section id="arquivos" class="doc-section" data-section>
+          <div class="section-kicker">03 · IMPACTO</div>
+          <h2>Mapeamento de Arquivos Sensíveis</h2>
+          <p class="lead">Ao confirmar a presença de uma falha de LFI, testes autorizados buscam compreender o impacto sem coletar mais dados do que o necessário. O acesso depende das permissões do processo web.</p>
+          <div class="notice notice-red" role="note"><div class="notice-icon" aria-hidden="true">!</div><div><strong>Dados de alto risco</strong><p>Chaves privadas, hashes, variáveis de ambiente e históricos podem conter credenciais reais. Em laboratório, use dados fictícios e registre apenas a evidência mínima.</p></div></div>
+          <h3>Targets críticos em sistemas Linux</h3>
+          <div class="table-wrap" tabindex="0">
+            <table>
+              <thead><tr><th>Caminho</th><th>Descrição e importância</th></tr></thead>
+              <tbody>
+                <tr><td><code>/etc/passwd</code></td><td>Lista usuários, diretórios home e shells padrão; útil para demonstrar enumeração de contas.</td></tr>
+                <tr><td><code>/etc/shadow</code></td><td>Contém hashes de senhas e normalmente exige privilégios de root.</td></tr>
+                <tr><td><code>/proc/self/environ</code></td><td>Variáveis de ambiente do processo web; podem conter segredos e credenciais.</td></tr>
+                <tr><td><code>/proc/self/cmdline</code></td><td>Comando utilizado para iniciar o processo web atual.</td></tr>
+                <tr><td><code>/proc/self/fd/N</code></td><td>Descritores de arquivos abertos pelo processo, incluindo temporários.</td></tr>
+                <tr><td><code>~/.ssh/id_rsa</code> / <code>id_ed25519</code></td><td>Chaves privadas SSH; exposição representa comprometimento crítico.</td></tr>
+                <tr><td><code>~/.bash_history</code> / <code>.zsh_history</code></td><td>Histórico de comandos executados no terminal.</td></tr>
+                <tr><td><code>/var/log/apache2/access.log</code></td><td>Log de acessos do Apache e superfície associada a log poisoning.</td></tr>
+                <tr><td><code>/var/log/nginx/access.log</code></td><td>Log de acessos do Nginx.</td></tr>
+                <tr><td><code>/var/log/auth.log</code> / <code>sshd.log</code></td><td>Logs de autenticação SSH.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="source-note"><span>Nota editorial</span><p>O texto fornecido termina neste ponto, no meio de uma linha da tabela. As seções seguintes foram preservadas como estrutura para receber o conteúdo original restante.</p></div>
+        </section>
+
+        <section id="bypasses" class="doc-section pending-section" data-section>
+          <div class="section-kicker">04 · CONTEÚDO PENDENTE</div><h2>Técnicas Avançadas de Traversal e Bypasses de Filtros</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+        </section>
+        <section id="wrappers" class="doc-section pending-section" data-section>
+          <div class="section-kicker">05 · CONTEÚDO PENDENTE</div><h2>Exploração com PHP Wrappers e Pseudo-Protocolos</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+        </section>
+        <section id="rce" class="doc-section pending-section" data-section>
+          <div class="section-kicker">06 · CONTEÚDO PENDENTE</div><h2>Escalada de Impacto: de LFI para RCE</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+        </section>
+        <section id="automacao" class="doc-section pending-section" data-section>
+          <div class="section-kicker">07 · CONTEÚDO PENDENTE</div><h2>Automação, Fuzzing e Reconhecimento</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+        </section>
+        <section id="estudo" class="doc-section pending-section" data-section>
+          <div class="section-kicker">08 · CONTEÚDO PENDENTE</div><h2>Estudo de Caso Prático</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+        </section>
+        <section id="defesa" class="doc-section pending-section" data-section>
+          <div class="section-kicker">09 · CONTEÚDO PENDENTE</div><h2>Defesa em Profundidade e Código Seguro</h2><p>Seção reservada para o trecho correspondente do artigo original.</p>
+        </section>
+
+        <section id="simulador" class="doc-section simulator-section" data-section>
+          <div class="section-kicker">LAB · SIMULAÇÃO LOCAL</div>
+          <h2>Simulador e Validador de Payloads LFI</h2>
+          <p class="lead">Compare, no navegador, como quatro estratégias fictícias tratam uma entrada. Nenhum arquivo ou servidor real é acessado.</p>
+          <div class="simulator-card">
+            <form id="simulator-form">
+              <label for="payload">Parâmetro ou payload fictício</label>
+              <div class="input-row">
+                <input id="payload" name="payload" value="../../../etc/passwd" autocomplete="off" spellcheck="false">
+                <button class="primary-button" type="submit">Executar simulação</button>
+              </div>
+              <fieldset>
+                <legend>Estratégia do backend</legend>
+                <div class="filter-grid">
+                  <label><input type="radio" name="filter" value="none" checked><span><strong>Nenhum</strong><small>Entrada direta</small></span></label>
+                  <label><input type="radio" name="filter" value="remove"><span><strong>Remove ../</strong><small>Filtro frágil</small></span></label>
+                  <label><input type="radio" name="filter" value="allowlist"><span><strong>Allowlist</strong><small>Rotas conhecidas</small></span></label>
+                  <label><input type="radio" name="filter" value="realpath"><span><strong>Realpath</strong><small>Base validada</small></span></label>
+                </div>
+              </fieldset>
+              <div class="sample-buttons" aria-label="Exemplos de entrada">
+                <span>Testar:</span>
+                <button type="button" data-sample="../../../etc/passwd">Traversal</button>
+                <button type="button" data-sample="php://filter/convert.base64-encode/resource=index.php">Wrapper</button>
+                <button type="button" data-sample="home.php">Página válida</button>
+              </div>
+            </form>
+            <div class="simulator-output" id="simulator-output" aria-live="polite">
+              <div class="output-head"><span>RESULTADO</span><strong id="result-status">AGUARDANDO</strong></div>
+              <dl>
+                <div><dt>Entrada recebida</dt><dd id="result-input">—</dd></div>
+                <div><dt>Caminho processado</dt><dd id="result-path">—</dd></div>
+              </dl>
+              <p id="result-explanation">Escolha uma estratégia e execute a simulação.</p>
+            </div>
+          </div>
+          <div class="notice notice-green" role="note"><div class="notice-icon" aria-hidden="true">✓</div><div><strong>Conclusão defensiva</strong><p>Remover sequências específicas é insuficiente. Prefira identificadores mapeados em allowlist e, quando caminhos forem indispensáveis, normalize-os e confirme que permanecem dentro de uma pasta base confiável.</p></div></div>
+        </section>
+      </article>
+    </main>
+  </div>
+
+  <footer class="site-footer">
+    <div><strong>LFI Guide</strong><p>Material educacional para ambientes controlados e testes autorizados.</p></div>
+    <a href="#topo">Voltar ao topo</a>
+  </footer>
+
+  <div class="toc-backdrop" id="toc-backdrop" hidden></div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>

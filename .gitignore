@@ -1,0 +1,8 @@
+# O GitHub Pages publica somente o tutorial estático.
+# O laboratório vulnerável e o material do professor permanecem locais.
+/.htaccess
+/assets/
+/fatecseg-corp.tar.gz
+/index.php
+/pages/
+/professor/
